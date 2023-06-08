@@ -1,13 +1,13 @@
 
 
-use std::io::Write;
+use std::{io::Write, str::FromStr};
 
 use clap::Parser;
 use futures::StreamExt;
 use tracing::{debug, info, trace, warn};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 
-use bambu::{Printer, ConnectOpts, types::Report};
+use bambu::{Printer, ConnectOpts, types::{Report, McPrintCommand, McPrintValue}};
 
 /// Bambu 3d printer MQTT command line connector
 #[derive(Clone, Debug, PartialEq, Parser)]
@@ -78,6 +78,53 @@ async fn main() -> anyhow::Result<()> {
             let o: Vec<Report> = serde_json::from_slice(&d)?;
 
             info!("Parsed {} objects", o.len());
+
+            let r: Vec<_> = o.iter()
+            .filter_map(|i| match i {
+                Report::McPrint { command, param, .. } if command == &McPrintCommand::PushInfo => Some(param.to_string()),
+                _ => None,
+            })
+            .filter_map(|p| McPrintValue::from_str(&p).ok() )
+            .filter_map(|v| match v {
+                McPrintValue::BmcMeas { x, y, z_c, z_d } => Some((x, y, z_c, z_d)),
+                _ => None,
+            })
+            .collect();
+
+            let mut xs = Vec::<f32>::new();
+            let mut ys = Vec::<f32>::new();
+
+            for (x, y, ..) in r.iter() {
+                if xs.iter().find(|v| v == &x).is_none() {
+                    xs.push(*x);
+                }
+
+                if ys.iter().find(|v| v == &y).is_none() {
+                    ys.push(*y);
+                }
+            }
+
+            // Print level data
+            print!("        ");
+            for x in &xs {
+                print!("{x:<7.01}");
+            }
+            println!("");
+
+            for y in &ys {
+                print!("{y:>5.01}: ");
+
+                for x in &xs {
+                    let v = r.iter().find(|v| v.0 == *x && v.1 == *y);
+
+                    match v {
+                        Some(v) => print!("{:>6.03} ", v.2),
+                        None => print!("????? "),
+                    }
+                }
+
+                println!("");
+            }
 
             return Ok(())
         }

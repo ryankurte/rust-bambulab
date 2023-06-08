@@ -19,3 +19,5 @@ rustls = { version = "*", features = ["dangerous_configuration"] }
 futures = "*"
 serde = { version = "*", features = [ "derive" ] }
 serde_json = "*"
+regex = "*"
+lazy_static = "*"
