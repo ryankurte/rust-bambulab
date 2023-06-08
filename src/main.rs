@@ -1,5 +1,7 @@
 
 
+use std::io::Write;
+
 use clap::Parser;
 use futures::StreamExt;
 use tracing::{debug, info, trace, warn};
@@ -13,9 +15,28 @@ pub struct Args {
     #[clap(flatten)]
     opts: ConnectOpts,
     
+    #[clap(subcommand)]
+    cmd: Commands,
+
     /// Enable verbose logging
     #[clap(long, default_value = "debug")]
     log_level: LevelFilter,
+}
+
+#[derive(Clone, Debug, PartialEq, Parser)]
+pub enum Commands {
+    /// Connect to the printer and log incoming messages
+    Log{
+        /// Output file for writing received objects
+        #[clap(long)]
+        file: Option<String>,
+    },
+    /// Parse an existing log file
+    Parse{
+        /// Log file for parsing
+        #[clap(long)]
+        file: String,
+    }
 }
 
 
@@ -43,6 +64,26 @@ async fn main() -> anyhow::Result<()> {
 
     debug!("Connected!");
 
+    // Setup log file
+    let mut f = match args.cmd {
+        Commands::Log{ file } => match file {
+            Some(o) => Some(std::fs::File::create(o)?),
+            _ => None,
+        },
+        Commands::Parse { file } => {
+            let d = std::fs::read(&file)?;
+
+            info!("Loaded {} bytes", d.len());
+
+            let o: Vec<Report> = serde_json::from_slice(&d)?;
+
+            info!("Parsed {} objects", o.len());
+
+            return Ok(())
+        }
+        _ => None,
+    };
+
     // Listen for messages
     loop {
         if let Some((topic, data)) = p.next().await {
@@ -65,6 +106,11 @@ async fn main() -> anyhow::Result<()> {
             };
 
             debug!("RX {topic}: {v:?}");
+
+            // Write to log if enabled
+            if let Some(f) = &mut f {
+                f.write(text.as_bytes())?;
+            }
         }
     }
 

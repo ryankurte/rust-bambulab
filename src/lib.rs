@@ -19,7 +19,7 @@ pub struct ConnectOpts {
     #[clap(short='n', long)]
     pub hostname: String,
 
-    #[clap(short, long, default_value = "1883")]
+    #[clap(short, long, default_value = "8883")]
     pub port: u16,
     
     #[clap(long)]
