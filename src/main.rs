@@ -57,10 +57,6 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(filter)
         .try_init();
 
-    debug!("Connecting to {}:{}", args.opts.hostname, args.opts.port);
-
-    // Establish printer connection
-    let mut p = Printer::connect(args.opts).await?;
 
     debug!("Connected!");
 
@@ -130,6 +126,11 @@ async fn main() -> anyhow::Result<()> {
         }
         _ => None,
     };
+
+    debug!("Connecting to {}:{}", args.opts.hostname, args.opts.port);
+
+    // Establish printer connection
+    let mut p = Printer::connect(args.opts).await?;
 
     // Listen for messages
     loop {
