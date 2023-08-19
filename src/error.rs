@@ -1,7 +1,4 @@
-
-use paho_mqtt::{
-    Error as MqttError,
-};
+use paho_mqtt::Error as MqttError;
 
 #[derive(Debug, thiserror::Error, displaydoc::Display)]
 pub enum Error {
@@ -16,4 +13,3 @@ impl From<MqttError> for Error {
         Self::Mqtt(value)
     }
 }
-

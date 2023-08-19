@@ -1,12 +1,8 @@
-
-
 use futures::StreamExt;
-use paho_mqtt::{
-    AsyncClient, ConnectOptionsBuilder, CreateOptionsBuilder, SslOptionsBuilder,
-};
+use paho_mqtt::{AsyncClient, ConnectOptionsBuilder, CreateOptionsBuilder, SslOptionsBuilder};
 use rustls::client::ServerCertVerifier;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tracing::{debug, trace, error};
+use tracing::{debug, error, trace};
 
 use crate::{ConnectOpts, Error};
 
@@ -124,8 +120,9 @@ impl Printer {
         let (tx, rx) = unbounded_channel();
 
         // Send subscription handle
-        self.tx.send(Commands::Subscribe(tx))
-            .map_err(|_| Error::SendError)?;        
+        self.tx
+            .send(Commands::Subscribe(tx))
+            .map_err(|_| Error::SendError)?;
 
         // Return receiver
         Ok(rx)
@@ -133,7 +130,8 @@ impl Printer {
 
     /// Disconnect client
     pub async fn disconnect(self) -> Result<(), Error> {
-        self.tx.send(Commands::Disconnect)
+        self.tx
+            .send(Commands::Disconnect)
             .map_err(|_| Error::SendError)?;
 
         Ok(())

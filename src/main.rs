@@ -109,16 +109,18 @@ async fn main() -> anyhow::Result<()> {
     // Listen for messages
     loop {
         if let Some((topic, data)) = l.recv().await {
+            // Skip empty heartbeats
+            if data == "{}" {
+                continue;
+            }
+
             // Decode to object
-            let v: Report = match serde_json::from_slice(&data.as_bytes()) {
-                Ok(v) => v,
+            match serde_json::from_slice::<Report>(&data.as_bytes()) {
+                Ok(v) => debug!("RX {topic}: {v:?}"),
                 Err(_e) => {
                     warn!("Failed to parse object on topic {topic}: {data:02x?}");
-                    continue;
                 }
             };
-
-            debug!("RX {topic}: {v:?}");
 
             // Write to log if enabled
             if let Some(f) = &mut f {

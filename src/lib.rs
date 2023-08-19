@@ -25,7 +25,7 @@ pub use error::Error;
 #[derive(Clone, Debug, PartialEq, Parser)]
 pub struct ConnectOpts {
     /// Hostname or IP address
-    #[clap(short = 'n', long)]
+    #[clap(short = 'n', long, env)]
     pub hostname: String,
 
     /// MQTT Port
@@ -33,16 +33,19 @@ pub struct ConnectOpts {
     pub port: u16,
 
     /// Access code (see local connection page on printer)
-    #[clap(long)]
+    #[clap(long, env)]
     pub access_code: String,
 }
 
 impl Default for ConnectOpts {
     fn default() -> Self {
-        Self { hostname: Default::default(), port: 8883, access_code: Default::default() }
+        Self {
+            hostname: Default::default(),
+            port: 8883,
+            access_code: Default::default(),
+        }
     }
 }
+
 #[cfg(test)]
-mod tests {
-    
-}
+mod tests {}

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
 mod command;
 pub use command::*;
 

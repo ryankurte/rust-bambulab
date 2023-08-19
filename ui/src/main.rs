@@ -1,21 +1,19 @@
 #![feature(const_trait_impl)]
 
-use std::{sync::{Arc, Mutex}, hash::Hash, pin::Pin};
-use futures::stream::StreamExt;
-
-use bambu::{ConnectOpts, Printer};
-use iced::{
-    alignment::{self, Alignment, Horizontal},
-    widget::{canvas::Event, column, row, Button, Column, Row, Text, TextInput},
-    Application, Command, Element, Length, Point, Settings, Theme, futures::{stream::BoxStream, Stream, FutureExt},
-    advanced::subscription::{EventStream, Recipe},
-};
-
-use plotters::{prelude::*, style::colors::colormaps::VulcanoHSL};
-use plotters_iced::{Chart, ChartBuilder, ChartWidget, DrawingBackend};
+use std::hash::Hash;
 
 use clap::Parser;
-use num_traits::float::FloatConst;
+use futures::stream::StreamExt;
+use iced::{
+    advanced::subscription::{EventStream, Recipe},
+    futures::stream::BoxStream,
+    widget::{column, Row},
+    Application, Command, Element, Length, Settings, Theme,
+};
+use tracing::{debug, error, info, warn};
+use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
+
+use bambu::{ConnectOpts, Printer};
 
 mod chart;
 use chart::BedChart;
@@ -23,12 +21,14 @@ use chart::BedChart;
 mod message;
 pub use message::Message;
 
-use tokio::sync::mpsc::unbounded_channel;
-use tracing::{debug, error, info, warn};
-use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
+mod control;
+use control::Controls;
 
 #[derive(Clone, Debug, PartialEq, Parser)]
 pub struct Args {
+    #[clap(flatten)]
+    opts: ConnectOpts,
+
     /// Enable verbose logging
     #[clap(long, default_value = "debug")]
     log_level: LevelFilter,
@@ -74,6 +74,7 @@ fn main() -> anyhow::Result<()> {
             resizable: true,
             ..Default::default()
         },
+        flags: args.opts,
         ..Default::default()
     })?;
 
@@ -90,12 +91,15 @@ impl Application for App {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = Theme;
-    type Flags = ();
+    type Flags = ConnectOpts;
 
-    fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
+    fn new(flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
         (
             Self {
-                c: Controls::default(),
+                c: Controls {
+                    opts: flags,
+                    connected: false,
+                },
                 p: None,
                 bc: BedChart::new(),
             },
@@ -115,29 +119,27 @@ impl Application for App {
             Message::Connect(opts) => return Self::connect(opts),
             Message::Connected(printer) => {
                 debug!("Received printer, unpacking");
-                let p = printer.lock().unwrap().take();
-
-                self.p = p;
+                self.p = Some(printer.clone());
                 self.c.connected = true;
-            },
+            }
             Message::Disconnect if self.p.is_some() => {
                 let p = self.p.take().unwrap();
                 return Self::disconnect(p);
-            },
+            }
             Message::Disconnected => {
                 self.c.connected = false;
-            },
+            }
 
             Message::Report(data) => {
                 debug!("RX {data:?}")
-            },
+            }
 
             Message::Pitch(p) => self.bc.pitch = p,
             Message::Yaw(y) => self.bc.yaw = y,
             Message::YawPitch(y, p) => {
                 self.bc.pitch = p;
                 self.bc.yaw = y;
-            },
+            }
             _ => (),
         }
 
@@ -173,7 +175,7 @@ impl App {
                 Ok(p)
             },
             |r: Result<Printer, anyhow::Error>| match r {
-                Ok(c) => Message::Connected(Arc::new(Mutex::new(Some(c)))),
+                Ok(c) => Message::Connected(c),
                 Err(e) => {
                     error!("Connection failed: {:?}", e);
                     Message::Tick
@@ -216,59 +218,6 @@ impl Recipe for PrinterSubscription {
 
         let l = self.printer.listen().unwrap();
 
-        Box::pin(UnboundedReceiverStream::from(l).map(|(t, d)| Message::Report(d) ))
-    }
-}
-
-pub struct Controls {
-    opts: ConnectOpts,
-    connected: bool,
-}
-
-impl Default for Controls {
-    fn default() -> Self {
-        Self {
-            opts: Default::default(),
-            connected: false,
-        }
-    }
-}
-
-impl Controls {
-    pub fn view(&self) -> Element<'_, Message> {
-        let mut connect_ctl = Column::new()
-            .spacing(10)
-            .padding(20)
-            .align_items(Alignment::Center);
-
-        connect_ctl = connect_ctl.push(Text::new("Printer connection"));
-
-        connect_ctl = connect_ctl.push(
-            TextInput::new("hostname", &self.opts.hostname)
-                .on_input(Message::SetHostname)
-                .width(Length::Fill),
-        );
-
-        connect_ctl = connect_ctl.push(
-            TextInput::new("access code", &self.opts.access_code)
-                .on_input(Message::SetAccessCode)
-                .width(Length::Fill),
-        );
-
-        if !self.connected {
-            connect_ctl = connect_ctl.push(
-                Button::new(Text::new("connect").horizontal_alignment(Horizontal::Center))
-                    .on_press(Message::Connect(self.opts.clone()))
-                    .width(Length::Fill),
-            )
-        } else {
-            connect_ctl = connect_ctl.push(
-                Button::new(Text::new("disconnect").horizontal_alignment(Horizontal::Center))
-                    .on_press(Message::Disconnect)
-                    .width(Length::Fill),
-            )
-        }
-
-        connect_ctl.into()
+        Box::pin(UnboundedReceiverStream::from(l).map(|(t, d)| Message::Report(d)))
     }
 }

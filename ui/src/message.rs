@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use bambu::{ConnectOpts, Printer};
 
 /// Application update message type
@@ -15,7 +13,7 @@ pub enum Message {
     Connect(ConnectOpts),
 
     // Receive connected printer instance
-    Connected(Arc<Mutex<Option<Printer>>>),
+    Connected(Printer),
 
     // Disconnect from printer
     Disconnect,
