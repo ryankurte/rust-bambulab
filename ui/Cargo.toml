@@ -4,18 +4,23 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bambu = "*"
 
-iced = { version = "0.9.0", features = ["canvas", "tokio"] }
-iced_wgpu = "0.10.0"
-iced_native = "0.10.0"
-plotters-iced = "0.8"
-plotters="0.3"
+iced = { version = "0.10.0", features = ["canvas", "tokio", "advanced"] }
+iced_wgpu = "0.11.1"
+
+plotters = { version = "0.3.5", default_features = false, features = ["all_series", "all_elements", "full_palette", "colormaps" ] }
+plotters-iced = "0.9.0"
+
+tracing = "*"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 tokio = { version = "*", features = [ "full" ] }
 reqwest = { version = "0.11", features = ["json"] }
-structopt = "0.3.26"
+clap = { version = "4.3.23", features = [ "derive" ] }
 anyhow = "1.0.72"
-num-traits = "*"
+num-traits = "0.2.16"
+displaydoc = "*"

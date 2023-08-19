@@ -1,4 +1,3 @@
-//! See: https://github.com/greghesp/ha-bambulab/tree/main/custom_components/bambu_lab
 
 use clap::Parser;
 use futures::{Stream, StreamExt};
@@ -12,44 +11,7 @@ use tokio::{
 };
 use tracing::{debug, trace};
 
-pub mod level;
-pub mod types;
-
-/// Options for printer connection
-#[derive(Clone, Debug, PartialEq, Parser)]
-pub struct ConnectOpts {
-    /// Hostname or IP address
-    #[clap(short = 'n', long)]
-    pub hostname: String,
-
-    /// MQTT Port
-    #[clap(short, long, default_value = "8883")]
-    pub port: u16,
-
-    /// Access code (see local connection page on printer)
-    #[clap(long)]
-    pub access_code: String,
-}
-
-impl Default for ConnectOpts {
-    fn default() -> Self {
-        Self { hostname: Default::default(), port: 8883, access_code: Default::default() }
-    }
-}
-
-#[derive(Debug, thiserror::Error, displaydoc::Display)]
-pub enum Error {
-    /// MQTT error {0}
-    Mqtt(MqttError),
-}
-
-impl From<MqttError> for Error {
-    fn from(value: MqttError) -> Self {
-        Self::Mqtt(value)
-    }
-}
-
-/// Handle for connected printer
+/// Bambu printer handle
 pub struct Printer {
     opts: ConnectOpts,
     client: AsyncClient,
@@ -188,9 +150,4 @@ impl std::hash::Hash for Printer {
         self.opts.hostname.hash(state);
         self.opts.port.hash(state);
     }
-}
-
-#[cfg(test)]
-mod tests {
-    
 }

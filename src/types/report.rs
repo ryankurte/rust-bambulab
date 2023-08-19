@@ -1,14 +1,14 @@
-use std::{str::FromStr, convert::Infallible};
+use std::{str::FromStr};
 
 use regex::Regex;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Report {
     Print(Print),
-    McPrint{
+    McPrint {
         command: McPrintCommand,
         param: Value,
         sequence_id: String,
@@ -33,7 +33,7 @@ pub enum McPrintValue {
     AmsTask,
     Bmc,
     /// Bed levelling measurement
-    BmcMeas{
+    BmcMeas {
         x: f32,
         y: f32,
         z_c: f32,
@@ -61,38 +61,45 @@ impl FromStr for McPrintValue {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.trim_start_matches("\"")
-            .trim_end_matches("\"");
+        let s = s.trim_start_matches('\"').trim_end_matches('\"');
 
         // TODO: match and parse values
         if s.starts_with("[AMS][Period]") {
-            return Ok(Self::AmsPeriod)
-
+            return Ok(Self::AmsPeriod);
         } else if s.starts_with("[AMS][TASK]") {
-            return Ok(Self::AmsTask)
-
+            return Ok(Self::AmsTask);
         } else if s.starts_with("[BMC]") {
             let s = s.trim_start_matches("[BMC] ");
-            
+
             if let Some(c) = BMC_MEAS.captures(s) {
-
-                return Ok(Self::BmcMeas { 
-                    x: c.get(1).map(|v| f32::from_str(v.as_str()) ).unwrap().unwrap(), 
-                    y: c.get(2).map(|v| f32::from_str(v.as_str()) ).unwrap().unwrap(), 
-                    z_c: c.get(3).map(|v| f32::from_str(v.as_str()) ).unwrap().unwrap(), 
-                    z_d: c.get(4).map(|v| f32::from_str(v.as_str()) ).unwrap().unwrap(),
-                })
-
-
+                return Ok(Self::BmcMeas {
+                    x: c.get(1)
+                        .map(|v| f32::from_str(v.as_str()))
+                        .unwrap()
+                        .unwrap(),
+                    y: c.get(2)
+                        .map(|v| f32::from_str(v.as_str()))
+                        .unwrap()
+                        .unwrap(),
+                    z_c: c
+                        .get(3)
+                        .map(|v| f32::from_str(v.as_str()))
+                        .unwrap()
+                        .unwrap(),
+                    z_d: c
+                        .get(4)
+                        .map(|v| f32::from_str(v.as_str()))
+                        .unwrap()
+                        .unwrap(),
+                });
             } else {
-                return Ok(Self::Bmc)
+                return Ok(Self::Bmc);
             }
         }
 
-       return Ok(Self::Unknown(s.to_string()))
+        Ok(Self::Unknown(s.to_string()))
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -140,9 +147,8 @@ mod test {
         for (s, t) in tests {
             println!("Parsing: {s}, Expected: {t:?}");
 
-            let t1 = McPrintValue::from_str(*s).unwrap();
+            let t1 = McPrintValue::from_str(s).unwrap();
             assert_eq!(&t1, t);
         }
     }
-
 }

@@ -1,18 +1,18 @@
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
-    System{
+    System {
         sequence_id: usize,
         command: SystemCommand,
     },
-    Print{
+    Print {
         sequence_id: usize,
         command: PrintCommand,
     },
-    Info{
+    Info {
         sequence_id: usize,
         command: InfoCommand,
     },
@@ -20,23 +20,30 @@ pub enum Command {
 
 impl Command {
     pub fn system(sequence_id: usize, command: SystemCommand) -> Self {
-        Self::System { sequence_id, command }
+        Self::System {
+            sequence_id,
+            command,
+        }
     }
 
     pub fn print(sequence_id: usize, command: PrintCommand) -> Self {
-        Self::Print { sequence_id, command }
+        Self::Print {
+            sequence_id,
+            command,
+        }
     }
 
     pub fn info(sequence_id: usize, command: InfoCommand) -> Self {
-        Self::Info { sequence_id, command }
+        Self::Info {
+            sequence_id,
+            command,
+        }
     }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SystemCommand {
-    
-}
+pub enum SystemCommand {}
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

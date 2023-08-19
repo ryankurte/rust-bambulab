@@ -1,4 +1,3 @@
-
 pub const ERRORS: &[(&str, &str)] = &[
         ("0300_1000_0002_0001", "The 1st order mechanical resonance mode of X axis is low."),
         ("0300_1000_0002_0002", "The 1st order mechanical resonance mode of X axis differ much..."),

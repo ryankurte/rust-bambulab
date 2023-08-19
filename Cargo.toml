@@ -24,3 +24,7 @@ serde = { version = "*", features = [ "derive" ] }
 serde_json = "*"
 regex = "*"
 lazy_static = "*"
+
+[patch.crates-io]
+plotters-iced = { git = "https://github.com/Joylei/plotters-iced.git" }
+bambu = { path = "." }

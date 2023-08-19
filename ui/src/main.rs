@@ -1,30 +1,73 @@
+#![feature(const_trait_impl)]
 
+use std::{sync::{Arc, Mutex}, hash::Hash, pin::Pin};
+
+use bambu::{ConnectOpts, Printer};
 use iced::{
-    alignment::{self, Horizontal, Alignment},
-    Application,
-    Length,
-    Command,
-    Settings, Theme, Element, Point,
-    widget::canvas::{Cursor, Event},
-};
-use iced_native::{
-    subscription::Recipe,
-    widget::{
-        Button, Column, PickList, ProgressBar, Row, Slider, VerticalSlider, Text, TextInput, Space,
-    }, row, column,
+    alignment::{self, Alignment, Horizontal},
+    widget::{canvas::Event, column, row, Button, Column, Row, Text, TextInput},
+    Application, Command, Element, Length, Point, Settings, Theme, futures::{stream::BoxStream, Stream},
 };
 
-use plotters::prelude::*;
-use plotters_iced::{Chart, ChartWidget, DrawingBackend, ChartBuilder};
+use plotters::{prelude::*, style::colors::colormaps::VulcanoHSL};
+use plotters_iced::{Chart, ChartBuilder, ChartWidget, DrawingBackend};
 
+use clap::Parser;
 use num_traits::float::FloatConst;
 
-fn main() -> anyhow::Result<()> {
-    println!("Hello, world!");
+mod chart;
+use chart::BedChart;
 
-    App::run(Settings{
+mod message;
+pub use message::Message;
+
+use tracing::{debug, error, info, warn};
+use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
+
+#[derive(Clone, Debug, PartialEq, Parser)]
+pub struct Args {
+    /// Enable verbose logging
+    #[clap(long, default_value = "debug")]
+    log_level: LevelFilter,
+}
+
+#[derive(Clone, Debug, PartialEq, displaydoc::Display)]
+pub enum Status {
+    /// Idle
+    Idle,
+    /// Connecting to printer
+    Connecting,
+    /// Connected to printer
+    Connected,
+    /// Disconnected from printer
+    Disconnected,
+}
+
+fn main() -> anyhow::Result<()> {
+    // Load arguments
+    let args = Args::parse();
+
+    // Setup logging
+    let filter = EnvFilter::from_default_env()
+        .add_directive("paho_mqtt=warn".parse().unwrap())
+        .add_directive("wgpu_core=warn".parse().unwrap())
+        .add_directive("wgpu_native=warn".parse().unwrap())
+        .add_directive("wgpu_hal=warn".parse().unwrap())
+        .add_directive("iced_wgpu=warn".parse().unwrap())
+        .add_directive("naga=warn".parse().unwrap())
+        .add_directive("cosmic_text=warn".parse().unwrap())
+        .add_directive(args.log_level.into());
+
+    let _ = FmtSubscriber::builder()
+        .compact()
+        .without_time()
+        .with_max_level(args.log_level)
+        .with_env_filter(filter)
+        .try_init();
+
+    App::run(Settings {
         antialiasing: true,
-        window: iced::window::Settings{
+        window: iced::window::Settings {
             resizable: true,
             ..Default::default()
         },
@@ -35,13 +78,9 @@ fn main() -> anyhow::Result<()> {
 }
 
 struct App {
+    c: Controls,
+    p: Option<Printer>,
     bc: BedChart,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum Message {
-    Yaw(f64),
-    Pitch(f64),
 }
 
 impl Application for App {
@@ -51,128 +90,173 @@ impl Application for App {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
-
-        (Self{ bc: BedChart::new() }, iced::Command::none())
+        (
+            Self {
+                c: Controls::default(),
+                p: None,
+                bc: BedChart::new(),
+            },
+            iced::Command::none(),
+        )
     }
 
     fn title(&self) -> String {
-        "VMouse GUI".to_string()
+        "Bambu Bed Level Viewer".to_string()
     }
 
     // Handle events
     fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
         match message {
+            Message::SetHostname(h) => self.c.opts.hostname = h,
+            Message::SetAccessCode(h) => self.c.opts.access_code = h,
+            Message::Connect(opts) => return Self::connect(opts),
+            Message::Connected(printer) => {
+                debug!("Received printer, unpacking");
+                let p = printer.lock().unwrap().take();
+
+                self.p = p;
+                self.c.connected = true;
+            }
+            Message::Disconnect if self.p.is_some() => {
+                let p = self.p.take().unwrap();
+                return Self::disconnect(p);
+            }
+            Message::Disconnected => {
+                self.c.connected = false;
+            }
             Message::Pitch(p) => self.bc.pitch = p,
             Message::Yaw(y) => self.bc.yaw = y,
+            Message::YawPitch(y, p) => {
+                self.bc.pitch = p;
+                self.bc.yaw = y;
+            }
             _ => (),
         }
 
         iced::Command::none()
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
-        column!(
-            Row::new()
-                .padding(10)
-                .push(
-                    row!(self.bc.view())
-                    .width(Length::FillPortion(10))
-                )
-                .push(
-                    row!(VerticalSlider::new(
-                        0.0..=1.0,
-                        self.bc.pitch,
-                        move |x| Message::Pitch(x),
-                    ).step(0.01))
-                    .width(Length::Shrink)
-                )
-                .height(Length::FillPortion(10)),
-            Row::new()
-                .padding(10)
-                .push(
-                    row!(Slider::new(
-                        0.0..=f64::PI()/2.0,
-                        self.bc.yaw,
-                        move |x| Message::Yaw(x),
-                    ).step(0.01))
-                    .height(Length::Shrink)
-                    .width(Length::FillPortion(10))
-                )
-                .push(
-                    row!()
-                    .width(Length::FillPortion(1))
-                )
-                .height(Length::Shrink)
-        )
-        .into()
-    }
-}
-
-struct BedChart {
-    pub yaw: f64,
-    pub pitch: f64,
-}
-
-impl BedChart {
-    fn new() -> Self {
-        Self{
-            yaw: 0.5,
-            pitch: 0.1,
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        if let Some(c) = &self.p {
+            //iced::Subscription::from_recipe(PrinterSubscription { printer: c })
+            todo!()
+        } else {
+            iced::Subscription::none()
         }
     }
 
-    fn view(&self)->Element<'_, Message> {
-        ChartWidget::new(self)
-            .width(Length::Fill)
-            .height(Length::Fill)
+    fn view(&self) -> Element<'_, Self::Message> {
+        Row::new()
+            .push(column!(self.c.view()).width(Length::FillPortion(4)))
+            .push(column!(self.bc.view()).width(Length::FillPortion(10)))
             .into()
     }
 }
 
-impl<M> Chart<M> for BedChart {
-    type State =  ();
+impl App {
+    /// Connect to a printer
+    fn connect(opts: ConnectOpts) -> Command<Message> {
+        Command::perform(
+            async move {
+                debug!("Connecting to printer: {opts:?}");
+                let p = Printer::connect(opts).await?;
 
-    fn build_chart<DB:DrawingBackend>(&self, state: &Self::State, mut builder: ChartBuilder<DB>) {
-        let x_axis = (-3.0..3.0).step(0.1);
-        let y_azis = -3.0..3.0;
-        let z_axis = (-3.0..3.0).step(0.1);
+                debug!("Connected!");
 
-        let mut chart = builder
-            .build_cartesian_3d(x_axis.clone(), y_azis.clone(), z_axis.clone()).unwrap();
+                Ok(p)
+            },
+            |r: Result<Printer, anyhow::Error>| match r {
+                Ok(c) => Message::Connected(Arc::new(Mutex::new(Some(c)))),
+                Err(e) => {
+                    error!("Connection failed: {:?}", e);
+                    Message::Tick
+                }
+            },
+        )
+    }
 
-        chart.with_projection(|mut pb| {
-            pb.yaw = self.yaw;
-            pb.pitch = self.pitch;
-            pb.scale = 0.9;
-            pb.into_matrix()
-        });
-        
-        chart
-            .configure_axes()
-            .light_grid_style(BLACK.mix(0.15))
-            .draw().unwrap();
-
-        chart.draw_series(
-            SurfaceSeries::xoz(
-                (-15..=15).map(|x| x as f64 / 5.0),
-                (-15..=15).map(|x| x as f64 / 5.0),
-                pdf,
-            )
-            .style(BLUE.mix(0.8)),
-        ).unwrap();
-
-        chart
-            .configure_series_labels()
-            .border_style(&BLACK)
-            .draw().unwrap();
+    fn disconnect(printer: Printer) -> Command<Message> {
+        Command::perform(
+            async move {
+                debug!("Disconnecting from printer: {printer:?}");
+                printer.disconnect().await
+            },
+            |r: Result<(), bambu::Error>| match r {
+                Ok(_) => Message::Disconnected,
+                Err(e) => {
+                    error!("Disconnection failed: {e:?}");
+                    Message::Tick
+                }
+            },
+        )
     }
 }
 
-fn pdf(x: f64, y: f64) -> f64 {
-    const SDX: f64 = 0.1;
-    const SDY: f64 = 0.1;
-    const A: f64 = 5.0;
-    let x = x as f64 / 10.0;
-    let y = y as f64 / 10.0;
-    A * (-x * x / 2.0 / SDX / SDX - y * y / 2.0 / SDY / SDY).exp()
+struct PrinterSubscription {
+    printer: Printer,
+}
+
+impl iced::advanced::subscription::Recipe for PrinterSubscription {
+    type Output = Message;
+
+    fn hash(&self, state: &mut iced::advanced::Hasher) {
+        self.printer.hash(state)
+    }
+
+    fn stream(self: Box<Self>, input: iced::advanced::subscription::EventStream) -> BoxStream<'static, Self::Output> {
+        todo!()
+    }
+}
+
+pub struct Controls {
+    opts: ConnectOpts,
+    connected: bool,
+}
+
+impl Default for Controls {
+    fn default() -> Self {
+        Self {
+            opts: Default::default(),
+            connected: false,
+        }
+    }
+}
+
+impl Controls {
+    pub fn view(&self) -> Element<'_, Message> {
+        let mut connect_ctl = Column::new()
+            .spacing(10)
+            .padding(20)
+            .align_items(Alignment::Center);
+
+        connect_ctl = connect_ctl.push(Text::new("Printer connection"));
+
+        connect_ctl = connect_ctl.push(
+            TextInput::new("hostname", &self.opts.hostname)
+                .on_input(Message::SetHostname)
+                .width(Length::Fill),
+        );
+
+        connect_ctl = connect_ctl.push(
+            TextInput::new("access code", &self.opts.access_code)
+                .on_input(Message::SetAccessCode)
+                .width(Length::Fill),
+        );
+
+        if !self.connected {
+            connect_ctl = connect_ctl.push(
+                Button::new(Text::new("connect").horizontal_alignment(Horizontal::Center))
+                    .on_press(Message::Connect(self.opts.clone()))
+                    .width(Length::Fill),
+            )
+        } else {
+            connect_ctl = connect_ctl.push(
+                Button::new(Text::new("disconnect").horizontal_alignment(Horizontal::Center))
+                    .on_press(Message::Disconnect)
+                    .width(Length::Fill),
+            )
+        }
+
+        connect_ctl.into()
+    }
 }
