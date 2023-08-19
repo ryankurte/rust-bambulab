@@ -103,24 +103,17 @@ async fn main() -> anyhow::Result<()> {
     debug!("Connecting to {}:{}", args.opts.hostname, args.opts.port);
 
     // Establish printer connection
-    let mut p = Printer::connect(args.opts).await?;
+    let p = Printer::connect(args.opts).await?;
+    let mut l = p.listen()?;
 
     // Listen for messages
     loop {
-        if let Some((topic, data)) = p.next().await {
-            // Decode to text
-            let text = match std::str::from_utf8(&data) {
+        if let Some((topic, data)) = l.recv().await {
+            // Decode to object
+            let v: Report = match serde_json::from_slice(&data.as_bytes()) {
                 Ok(v) => v,
                 Err(_e) => {
-                    warn!("Non-text object on topic {topic}: {data:02x?}");
-                    continue;
-                }
-            };
-
-            let v: Report = match serde_json::from_slice(&data) {
-                Ok(v) => v,
-                Err(_e) => {
-                    warn!("Failed to parse object on topic {topic}: {text:02x?}");
+                    warn!("Failed to parse object on topic {topic}: {data:02x?}");
                     continue;
                 }
             };
@@ -129,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
 
             // Write to log if enabled
             if let Some(f) = &mut f {
-                f.write(text.as_bytes())?;
+                f.write(data.as_bytes())?;
             }
         }
     }

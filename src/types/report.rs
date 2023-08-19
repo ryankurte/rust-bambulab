@@ -4,10 +4,15 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// TODO: rework everything to do with this
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Report {
-    Print(Print),
+    Print{
+        sequence_id: String,
+        #[serde(flatten)]
+        command: PrintCommand,
+    },
     McPrint {
         command: McPrintCommand,
         param: Value,
@@ -16,9 +21,12 @@ pub enum Report {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Print {
-    pub ams: Value,
+#[serde(rename_all = "snake_case", tag="command")]
+pub enum PrintCommand {
+    Ams(Value),
+    PushStatus{
+        bed_temper: f32,
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -104,6 +112,33 @@ impl FromStr for McPrintValue {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn parse_print_cmd() {
+        let tests = &[
+            (
+                r#"{ "print": { "sequence_id":"1275", "bed_temper":20.0, "command":"push_status", "msg":1} }"#,
+                Report::Print{ sequence_id: "1275".to_string(), command: PrintCommand::PushStatus{ bed_temper: 20.0 } }
+            ),
+            #[cfg(todo)]
+            (
+                r#"
+                "{\"print\":{\"ams\":{\"ams\":[{\"humidity\":\"3\",\"id\":\"0\",\"temp\":\"26.0\",\"tray\":[{\"bed_temp\":\"45\",\"bed_temp_type\":\"1\",\"cali_idx\":-1,\"cols\":[\"FF6A13FF\"],\"ctype\":0,\"drying_temp\":\"55\",\"drying_time\":\"8\",\"id\":\"0\",\"nozzle_temp_max\":\"230\",\"nozzle_temp_min\":\"190\",\"remain\":0,\"tag_uid\":\"976622BA00000100\",\"tray_color\":\"FF6A13FF\",\"tray_diameter\":\"1.75\",\"tray_id_name\":\"A00-A0\",\"tray_info_idx\":\"GFA00\",\"tray_sub_brands\":\"PLA Basic\",\"tray_type\":\"PLA\",\"tray_uuid\":\"A5D66E2375254E10AA0414CB8E301B3C\",\"tray_weight\":\"250\",\"xcam_info\":\"8813100EE803E8039A99193F\"},{\"bed_temp\":\"0\",\"bed_temp_type\":\"0\",\"cali_idx\":-1,\"cols\":[\"443089FF\"],\"ctype\":0,\"drying_temp\":\"0\",\"drying_time\":\"0\",\"id\":\"1\",\"nozzle_temp_max\":\"240\",\"nozzle_temp_min\":\"190\",\"remain\":0,\"tag_uid\":\"0000000000000000\",\"tray_color\":\"443089FF\",\"tray_diameter\":\"0.00\",\"tray_id_name\":\"\",\"tray_info_idx\":\"GFL99\",\"tray_sub_brands\":\"\",\"tray_type\":\"PLA\",\"tray_uuid\":\"00000000000000000000000000000000\",\"tray_weight\":\"0\",\"xcam_info\":\"000000000000000000000000\"},{\"bed_temp\":\"0\",\"bed_temp_type\":\"0\",\"cali_idx\":-1,\"cols\":[\"FF5F00FF\"],\"ctype\":0,\"drying_temp\":\"0\",\"drying_time\":\"0\",\"id\":\"2\",\"nozzle_temp_max\":\"270\",\"nozzle_temp_min\":\"220\",\"remain\":0,\"tag_uid\":\"0000000000000000\",\"tray_color\":\"FF5F00FF\",\"tray_diameter\":\"0.00\",\"tray_id_name\":\"\",\"tray_info_idx\":\"GFG99\",\"tray_sub_brands\":\"\",\"tray_type\":\"PETG\",\"tray_uuid\":\"00000000000000000000000000000000\",\"tray_weight\":\"0\",\"xcam_info\":\"000000000000000000000000\"},{\"id\":\"3\"}]}],\"version\":564},\"command\":\"push_status\",\"msg\":1,\"sequence_id\":\"1479\"}}""#,
+                Report::Print{ sequence_id: "1479".to_string(), command: PrintCommand::Ams(Value::Null) },
+            )
+        ];
+
+        for (s, v) in tests {
+            println!("s: {s} v: {v:?}");
+
+            let _a: serde_json::Value = serde_json::from_str(s).unwrap();
+
+            let _e = serde_json::to_string(v).expect("failed to encode");
+
+            let r: Report = serde_json::from_str(s).expect("failed to decode");
+            assert_eq!(r, *v);
+        }
+    }
 
     #[test]
     fn parse_mc_params() {

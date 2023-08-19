@@ -51,6 +51,7 @@ pub enum PrintCommand {
     Pause,
     Resume,
     Stop,
+    PushStatus,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

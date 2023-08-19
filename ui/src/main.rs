@@ -1,12 +1,14 @@
 #![feature(const_trait_impl)]
 
 use std::{sync::{Arc, Mutex}, hash::Hash, pin::Pin};
+use futures::stream::StreamExt;
 
 use bambu::{ConnectOpts, Printer};
 use iced::{
     alignment::{self, Alignment, Horizontal},
     widget::{canvas::Event, column, row, Button, Column, Row, Text, TextInput},
-    Application, Command, Element, Length, Point, Settings, Theme, futures::{stream::BoxStream, Stream},
+    Application, Command, Element, Length, Point, Settings, Theme, futures::{stream::BoxStream, Stream, FutureExt},
+    advanced::subscription::{EventStream, Recipe},
 };
 
 use plotters::{prelude::*, style::colors::colormaps::VulcanoHSL};
@@ -21,6 +23,7 @@ use chart::BedChart;
 mod message;
 pub use message::Message;
 
+use tokio::sync::mpsc::unbounded_channel;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 
@@ -116,20 +119,25 @@ impl Application for App {
 
                 self.p = p;
                 self.c.connected = true;
-            }
+            },
             Message::Disconnect if self.p.is_some() => {
                 let p = self.p.take().unwrap();
                 return Self::disconnect(p);
-            }
+            },
             Message::Disconnected => {
                 self.c.connected = false;
-            }
+            },
+
+            Message::Report(data) => {
+                debug!("RX {data:?}")
+            },
+
             Message::Pitch(p) => self.bc.pitch = p,
             Message::Yaw(y) => self.bc.yaw = y,
             Message::YawPitch(y, p) => {
                 self.bc.pitch = p;
                 self.bc.yaw = y;
-            }
+            },
             _ => (),
         }
 
@@ -138,8 +146,7 @@ impl Application for App {
 
     fn subscription(&self) -> iced::Subscription<Self::Message> {
         if let Some(c) = &self.p {
-            //iced::Subscription::from_recipe(PrinterSubscription { printer: c })
-            todo!()
+            iced::Subscription::from_recipe(PrinterSubscription { printer: c.clone() })
         } else {
             iced::Subscription::none()
         }
@@ -175,6 +182,7 @@ impl App {
         )
     }
 
+    /// Disconnect from a printer
     fn disconnect(printer: Printer) -> Command<Message> {
         Command::perform(
             async move {
@@ -196,15 +204,19 @@ struct PrinterSubscription {
     printer: Printer,
 }
 
-impl iced::advanced::subscription::Recipe for PrinterSubscription {
+impl Recipe for PrinterSubscription {
     type Output = Message;
 
     fn hash(&self, state: &mut iced::advanced::Hasher) {
         self.printer.hash(state)
     }
 
-    fn stream(self: Box<Self>, input: iced::advanced::subscription::EventStream) -> BoxStream<'static, Self::Output> {
-        todo!()
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        use tokio_stream::wrappers::UnboundedReceiverStream;
+
+        let l = self.printer.listen().unwrap();
+
+        Box::pin(UnboundedReceiverStream::from(l).map(|(t, d)| Message::Report(d) ))
     }
 }
 

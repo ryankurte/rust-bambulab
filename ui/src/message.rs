@@ -35,4 +35,6 @@ pub enum Message {
 
     // UI tick
     Tick,
+
+    Report(String),
 }
